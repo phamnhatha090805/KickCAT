@@ -20,6 +20,18 @@ using namespace kickcat::slave;
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
+CoE::Device findDeviceByVendorAndProduct(std::vector<CoE::Device>&& devices, uint32_t vendor_id, uint32_t product_code)
+{
+    for (CoE::Device& device : devices)
+    {
+        if (device.vendor_id == vendor_id && device.product_code == product_code)
+        {
+            return std::move(device);
+        }
+    }
+    throw std::runtime_error("No matching device found for vendor_id " + std::to_string(vendor_id) + " and product_code " + std::to_string(product_code));
+}
+
 int main(int argc, char* argv[])
 {
     argparse::ArgumentParser program("network_simulator");
@@ -29,6 +41,13 @@ int main(int argc, char* argv[])
         .help("network interface name")
         .required()
         .store_into(interface);
+
+    int slave_number = 0;
+    program.add_argument("-n", "--count")
+        .help("Number of slaves to simulate")
+        .default_value(0)
+        .scan<'i', int>()
+        .store_into(slave_number);
 
     std::vector<std::string> slave_configs;
     program.add_argument("-s", "--slaves")
@@ -47,6 +66,27 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    std::vector<std::string> expanded_slave_configs;
+
+    if (slave_number > 0)
+    {
+        if (slave_configs.size() != 1)
+        {
+            std::cerr << "When using --count/-n, you must provide exactly one JSON config file with --slaves/-s" << std::endl;
+            return 1;
+        }
+
+        expanded_slave_configs.reserve(slave_number);
+        for (int i = 0; i < slave_number; ++i)
+        {
+            expanded_slave_configs.push_back(slave_configs[0]);
+        }
+    }
+    else
+    {
+        expanded_slave_configs = slave_configs;
+    }
+
     if (slave_configs.empty())
     {
         std::cerr << "No slave configuration files provided" << std::endl;
@@ -54,7 +94,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    size_t slave_count = slave_configs.size();
+    size_t slave_count = expanded_slave_configs.size();
     std::vector<std::unique_ptr<EmulatedESC>> escs;
     std::vector<std::unique_ptr<PDO>> pdos;
     std::vector<std::unique_ptr<Slave>> slaves;
@@ -72,7 +112,7 @@ int main(int argc, char* argv[])
     constexpr uint32_t PDO_MAX_SIZE = 32;
     CoE::EsiParser parser;
 
-    for (const auto& config_path : slave_configs)
+    for (const auto& config_path : expanded_slave_configs)
     {
         fs::path p(config_path);
         fs::path config_dir = p.parent_path();
@@ -112,8 +152,13 @@ int main(int argc, char* argv[])
             std::string coe_xml_path = config["coe_xml"];
             fs::path coe_xml_full_path = config_dir / coe_xml_path;
             auto mbx = std::make_unique<mailbox::response::Mailbox>(esc.get(), 1024);
-            auto dictionary = parser.loadFile(coe_xml_full_path.string());
-            mbx->enableCoE(std::move(dictionary));
+            auto devices = parser.loadDevicesFromFile(coe_xml_full_path.string());
+
+            // search for productcode / vendor id:
+            uint32_t vendor_id = 2; // from EEPROM
+            uint32_t product_code = 0x3EA3052; // from EEPROM
+            CoE::Device device = findDeviceByVendorAndProduct(std::move(devices), vendor_id, product_code);
+            mbx->enableCoE(std::move(device.dictionary));
             slave->setMailbox(mbx.get());
             mailboxes.push_back(std::move(mbx));
         }
