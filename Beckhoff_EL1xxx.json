@@ -1,0 +1,6 @@
+{
+  "eeprom": "Term 2 (EL1002).bin",
+  "coe_xml": "Beckhoff EL1xxx.xml",
+  "product_code": "EL1xxx",
+  "vendor_id": "0x00000002"
+}
