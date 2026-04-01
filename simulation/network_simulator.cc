@@ -152,8 +152,13 @@ int main(int argc, char* argv[])
             std::string coe_xml_path = config["coe_xml"];
             fs::path coe_xml_full_path = config_dir / coe_xml_path;
             auto mbx = std::make_unique<mailbox::response::Mailbox>(esc.get(), 1024);
-            auto dictionary = parser.loadFile(coe_xml_full_path.string());
-            mbx->enableCoE(std::move(dictionary));
+            auto devices = parser.loadDevicesFromFile(coe_xml_full_path.string());
+
+            // search for productcode / vendor id:
+            uint32_t vendor_id = 2; // from EEPROM
+            uint32_t product_code = 0x3EA3052; // from EEPROM
+            CoE::Device device = findDeviceByVendorAndProduct(std::move(devices), vendor_id, product_code);
+            mbx->enableCoE(std::move(device.dictionary));
             slave->setMailbox(mbx.get());
             mailboxes.push_back(std::move(mbx));
         }
