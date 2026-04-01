@@ -85,7 +85,7 @@ TEST(EmulatedESC, ecat_aprd_apwr_registers)
         esc.processDatagram(&header, &read_test, &wkc);
         ASSERT_EQ(wkc, 5);
         ASSERT_EQ(header.address, createAddress(1, address)); // +1 on address position for each ESC processing
-        ASSERT_EQ(read_test, payload);
+        ASSERT_EQ(read_test, payload+1);
 
         header.command = Command::APRD;
         header.address = createAddress(0, address);

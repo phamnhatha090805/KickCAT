@@ -14,8 +14,9 @@ namespace kickcat::CoE
         EsiParser() = default;
         ~EsiParser() = default;
 
-        CoE::Dictionary loadFile  (std::string const& file);
-        CoE::Dictionary loadString(std::string const& xml);
+         Dictionary loadFirstDictionaryFromFile  (std::string const& file);
+        std::vector<Device> loadDevicesFromFile  (std::string const& file);
+        std::vector<Device> loadString(std::string const& xml);
 
         char const* vendor() const  { return vendor_->FirstChildElement("Name")->GetText();       }
         char const* profile() const { return profile_->FirstChildElement("ProfileNo")->GetText(); }

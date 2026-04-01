@@ -20,6 +20,18 @@ using namespace kickcat::slave;
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
+CoE::Device findDeviceByVendorAndProduct(std::vector<CoE::Device>&& devices, uint32_t vendor_id, uint32_t product_code)
+{
+    for (CoE::Device& device : devices)
+    {
+        if (device.vendor_id == vendor_id && device.product_code == product_code)
+        {
+            return std::move(device);
+        }
+    }
+    throw std::runtime_error("No matching device found for vendor_id " + std::to_string(vendor_id) + " and product_code " + std::to_string(product_code));
+}
+
 int main(int argc, char* argv[])
 {
     argparse::ArgumentParser program("network_simulator");
