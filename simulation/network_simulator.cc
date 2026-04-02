@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <nlohmann/json.hpp>
 #include <numeric>
 
@@ -20,16 +21,18 @@ using namespace kickcat::slave;
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
-CoE::Device findDeviceByVendorAndProduct(std::vector<CoE::Device>&& devices, uint32_t vendor_id, uint32_t product_code)
+CoE::Device findDeviceByVendorAndProduct(std::vector<CoE::Device>&& devices, uint32_t vendor_id, uint32_t product_code, uint32_t revision_number)
 {
     for (CoE::Device& device : devices)
     {
-        if (device.vendor_id == vendor_id && device.product_code == product_code)
+        if (device.vendor_id == vendor_id && device.product_code == product_code && device.revision_number == revision_number)
         {
             return std::move(device);
         }
     }
-    throw std::runtime_error("No matching device found for vendor_id " + std::to_string(vendor_id) + " and product_code " + std::to_string(product_code));
+    std::stringstream ss;
+    ss << "No matching device found for vendor_id 0x" << std::hex << vendor_id << " and product_code 0x" << product_code << " and revision_number 0x" << revision_number;
+    throw std::runtime_error(ss.str());
 }
 
 int main(int argc, char* argv[])
@@ -155,9 +158,10 @@ int main(int argc, char* argv[])
             auto devices = parser.loadDevicesFromFile(coe_xml_full_path.string());
 
             // search for productcode / vendor id:
-            uint32_t vendor_id = 2; // from EEPROM
-            uint32_t product_code = 0x3EA3052; // from EEPROM
-            CoE::Device device = findDeviceByVendorAndProduct(std::move(devices), vendor_id, product_code);
+            uint32_t vendor_id = esc->getVendorId(); // from EEPROM
+            uint32_t product_code = esc->getProductCode(); // from EEPROM
+            uint32_t revision_number = esc->getRevisionNumber(); // from EEPROM
+            CoE::Device device = findDeviceByVendorAndProduct(std::move(devices), vendor_id, product_code, revision_number);
             mbx->enableCoE(std::move(device.dictionary));
             slave->setMailbox(mbx.get());
             mailboxes.push_back(std::move(mbx));

@@ -269,7 +269,7 @@ namespace kickcat::CoE
     struct Device {
         uint32_t vendor_id;
         uint32_t product_code;
-        // uint32_t revision_number;
+        uint32_t revision_number;
         // uint32_t serial_number;
 
         Dictionary dictionary;

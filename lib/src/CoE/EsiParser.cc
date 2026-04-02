@@ -110,11 +110,15 @@ namespace kickcat::CoE
         {
             type_ = device_->FirstChildElement("Type");
             std::string product_code_str = type_->Attribute("ProductCode");
+            std::string revision_number_str = type_->Attribute("RevisionNo");
             uint32_t productCode = toNumber<uint32_t>(product_code_str);
-            
+            uint32_t revision_number = toNumber<uint32_t>(revision_number_str);
+
             Device new_device;
             new_device.vendor_id = vendorId;
             new_device.product_code = productCode;
+            new_device.revision_number = revision_number;
+            printf("Found device with vendor id 0x%08x, product code 0x%08x, revision number 0x%08x\n", new_device.vendor_id, new_device.product_code, new_device.revision_number);
             profile_ = device_->FirstChildElement("Profile");
             if (profile_)
             {

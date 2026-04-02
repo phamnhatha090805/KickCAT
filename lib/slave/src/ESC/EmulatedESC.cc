@@ -70,6 +70,11 @@ namespace kickcat
         memory_.esc_configuration = eeprom_[0] >> 8;
 
         memory_.station_alias = eeprom_[4]; // fourth word of eeprom, at first load
+        
+        // Load vendor id and product code from eeprom
+        std::memcpy(&vendor_id_, &eeprom_[8], sizeof(vendor_id_));
+        std::memcpy(&product_code_, &eeprom_[10], sizeof(product_code_));
+        std::memcpy(&revision_number_, &eeprom_[12], sizeof(revision_number_));
     }
 
 
