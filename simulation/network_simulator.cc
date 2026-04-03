@@ -27,6 +27,7 @@ CoE::Device findDeviceByVendorAndProduct(std::vector<CoE::Device>&& devices, uin
     {
         if (device.vendor_id == vendor_id && device.product_code == product_code && device.revision_number == revision_number)
         {
+            printf("Found matching device in ESI file for vendor_id 0x%08x, product_code 0x%08x, revision_number 0x%08x\n", vendor_id, product_code, revision_number);
             return std::move(device);
         }
     }
