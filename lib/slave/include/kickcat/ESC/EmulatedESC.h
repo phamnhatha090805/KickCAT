@@ -35,7 +35,7 @@ namespace kickcat
         
         uint32_t getVendorId() const { return vendor_id_; }
         uint32_t getProductCode() const { return product_code_; }
-        uint32_t getRevisionNumber() const { return revision_number_ & 0xFFFF0000; }
+        uint32_t getRevisionNumber() const { return revision_number_; }
 
 
     private:
