@@ -30,6 +30,9 @@ namespace kickcat
         // eeprom never busy because the data are processed in sync with the request.
         memory_.eeprom_control &= ~0x8000;
 
+        // Disabled watchdog = OK at power-on
+        memory_.watchdog_status_process_data = 1;
+
         // Set default values in registers (TODO: a lot of them are left uninitialized)
         std::memset(memory_.sync_manager, 0, sizeof(memory_.sync_manager));
     }
@@ -604,10 +607,9 @@ namespace kickcat
         nanoseconds delay = pdoWatchdog();
         if (delay == 0ns) //Handle the watchdog disable case
         {  
-            memory_.watchdog_status_process_data = 1; // Consider watchdog is OK if disable
             return;
         }
-        
+
         auto now = since_epoch(); // Create the current time
         if (now < (lastLogicalWrite_ + delay)) // If the current time is before the last valid PDO write plus the delay
         {
@@ -624,8 +626,8 @@ namespace kickcat
                 }
                 // If the watchdog expires in OP, we must tell the master and potentially drop the status ourselves
                 memory_.al_control = (memory_.al_status & 0xFFF0) | State::SAFE_OP;
-                memory_.al_status |= 0x0010; // Set Error Bit
-                memory_.al_status_code = 0x001B; // SM Watchdog code
+                memory_.al_status |= AL_STATUS_ERR_IND; // Set Error Status
+                memory_.al_status_code = SYNC_MANAGER_WATCHDOG; // SM Watchdog code
             }
         }
     }
