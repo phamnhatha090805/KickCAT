@@ -183,10 +183,16 @@ namespace kickcat
         {
             uint32_t logical_address;
             uint8_t* physical_address;
-            uint16_t size;
+            uint16_t size;                  // Byte span in both logical and physical address range
+            uint8_t  logical_start_bit;     // First mapped bit in the first logical byte (0-7)
+            uint8_t  logical_stop_bit;      // Last mapped bit in the last logical byte (0-7)
+            uint8_t  physical_start_bit;    // First mapped bit in the first physical byte (0-7)
         };
         std::vector<PDO> rx_pdos_;
         std::vector<PDO> tx_pdos_;
+
+        static bool isByteAligned(PDO const& pdo);
+        static uint32_t totalMappedBits(PDO const& pdo);
 
         void loadEeprom();
 
@@ -201,6 +207,7 @@ namespace kickcat
         void processLWR(DatagramHeader* header, void* data, uint16_t* wkc);
         void processLRW(DatagramHeader* header, void* data, uint16_t* wkc);
         uint16_t processPDO(std::vector<PDO> const& pdos, bool read, DatagramHeader* header, void* data);
+        bool processBitAlignedPDO(DatagramHeader const* header, void* data, PDO const& pdo, bool read);
 
         void configureSMs();
         void configurePDOs();
