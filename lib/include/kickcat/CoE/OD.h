@@ -204,7 +204,7 @@ namespace kickcat::CoE
 
         uint8_t      subindex;
         uint16_t     bitlen;    // For PDO, shall be < 11888
-        uint16_t     bitoff;    // offset in bit
+        uint16_t     bitoff;    // offset in bit, inside the OD object (used by SDO complete access for payload layout)
         uint16_t     access{0};
         DataType     type;
         // default value
@@ -214,6 +214,14 @@ namespace kickcat::CoE
 
         void* data{nullptr};
         bool is_mapped{false};
+
+        // Bit position within the byte at `data` where the entry's value starts.
+        // - When the entry owns its storage (is_mapped == false), always 0:
+        //   the value lives in bits [0..bitlen-1] of the allocated buffer (LSB-first).
+        // - When the entry is aliased to a PDO image byte (is_mapped == true), set
+        //   by PDO::parsePdoMap to bit_offset % 8 in the PDO buffer; the value lives
+        //   at [data_bit_offset .. data_bit_offset + bitlen - 1] starting at `data`.
+        uint8_t data_bit_offset{0};
 
         /// Called before access
         std::vector<std::function<void(uint16_t access, Entry*)>> before_access;
@@ -243,16 +251,27 @@ namespace kickcat::CoE
     {
         object.entries.emplace_back(subindex, bitlen, bitoff, access, type, description);
         auto& alloc = object.entries.back().data;
-        std::size_t size = bitlen / 8;
-        alloc = std::malloc(size);
+        std::size_t alloc_size = (bitlen + 7) / 8;
+        std::size_t copy_size  = bitlen / 8;
+        alloc = std::malloc(alloc_size);
+        std::memset(alloc, 0, alloc_size);
 
         if constexpr(std::is_same_v<const char*, T>)
         {
-            std::memcpy(alloc, data, size);
+            std::memcpy(alloc, data, copy_size);
         }
         else
         {
-            std::memcpy(alloc, &data, size);
+            // Sub-byte entries (bitlen < 8) take the low `bitlen` bits of the source value.
+            if (bitlen < 8)
+            {
+                uint8_t mask = static_cast<uint8_t>((1u << bitlen) - 1);
+                *static_cast<uint8_t*>(alloc) = static_cast<uint8_t>(data) & mask;
+            }
+            else
+            {
+                std::memcpy(alloc, &data, copy_size);
+            }
         }
 
     }
@@ -262,6 +281,21 @@ namespace kickcat::CoE
     {
         object.entries.emplace_back(subindex, bitlen, bitoff, access, type, description);
     }
+
+    // Read entry->bitlen bits, starting at entry->data + entry->data_bit_offset, and
+    // place them in dst at dst_bit_offset (LSB-first). Bits in dst outside the written
+    // range are preserved (read-modify-write).
+    void readEntryBits (Entry const* entry, uint8_t* dst, uint32_t dst_bit_offset);
+
+    // Write entry->bitlen bits from src + src_bit_offset (LSB-first) into entry storage,
+    // starting at entry->data + entry->data_bit_offset. Bits in entry storage outside
+    // the written range are preserved (read-modify-write).
+    void writeEntryBits(Entry*       entry, uint8_t const* src, uint32_t src_bit_offset);
+
+    // Generic bit-buffer copy used internally by the helpers above. Copies n_bits bits
+    // from src (starting at src_bit_offset) into dst (starting at dst_bit_offset),
+    // LSB-first within each byte. Surrounding bits in dst are preserved.
+    void copyBits(uint8_t const* src, uint32_t src_bit_offset, uint8_t* dst, uint32_t dst_bit_offset, uint32_t n_bits);
 
     Dictionary createOD();
     Dictionary& dictionary();
