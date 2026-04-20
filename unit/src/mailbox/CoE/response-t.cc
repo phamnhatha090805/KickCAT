@@ -996,3 +996,208 @@ TEST_F(CoE_Response, createSDOMessage_rxpdo_remote_request)
     auto response_msg = createSDOMessage(&mbx, std::move(raw_message));
     ASSERT_EQ(nullptr, response_msg);
 }
+
+// --- Bit-level (sub-byte) PDO entries ---
+
+// Build a dictionary with a 0x6000 RECORD object holding 4 BOOL entries packed in one byte.
+// SI 0 = count (8 bits at bitoff 0), SI 1..4 = BOOL (1 bit each at bitoffs 8..11).
+static CoE::Dictionary createBitObjectDictionary()
+{
+    CoE::Dictionary dict;
+    CoE::Object obj{0x6000, CoE::ObjectCode::RECORD, "GPIO Bits", {}};
+    CoE::addEntry<uint8_t>(obj, 0, 8, 0,  CoE::Access::READ,                       CoE::DataType::UNSIGNED8, "Count", uint8_t{4});
+    CoE::addEntry<uint8_t>(obj, 1, 1, 8,  CoE::Access::READ | CoE::Access::WRITE,  CoE::DataType::BOOLEAN,   "GPIO1", uint8_t{1});
+    CoE::addEntry<uint8_t>(obj, 2, 1, 9,  CoE::Access::READ | CoE::Access::WRITE,  CoE::DataType::BOOLEAN,   "GPIO2", uint8_t{0});
+    CoE::addEntry<uint8_t>(obj, 3, 1, 10, CoE::Access::READ | CoE::Access::WRITE,  CoE::DataType::BOOLEAN,   "GPIO3", uint8_t{1});
+    CoE::addEntry<uint8_t>(obj, 4, 1, 11, CoE::Access::READ | CoE::Access::WRITE,  CoE::DataType::BOOLEAN,   "GPIO4", uint8_t{0});
+    dict.push_back(std::move(obj));
+    return dict;
+}
+
+TEST(CoE_Response_Bits, SDO_upload_bool_returns_one_octet)
+{
+    MockESC esc;
+    Mailbox mbx{&esc, TEST_MAILBOX_SIZE, 1};
+    mbx.enableCoE(createBitObjectDictionary());
+
+    // GPIO1 default value = 1 → expect 1 octet payload with bit 0 set
+    std::vector<uint8_t> raw = createTestReadSDO(0x6000, 1);
+    auto response_msg = createSDOMessage(&mbx, std::move(raw));
+    ASSERT_EQ(mailbox::ProcessingResult::FINALIZE, response_msg->process());
+
+    auto const& msg = mbx.readyToSend();
+    auto header  = pointData<mailbox::Header>(msg.data());
+    auto coe     = pointData<CoE::Header>(header);
+    auto sdo     = pointData<CoE::ServiceData>(coe);
+    auto payload = pointData<uint8_t>(sdo);
+
+    ASSERT_EQ(CoE::Service::SDO_RESPONSE, coe->service);
+    ASSERT_EQ(CoE::SDO::response::UPLOAD, sdo->command);
+    ASSERT_EQ(1, sdo->transfer_type);            // expedited
+    ASSERT_EQ(3, sdo->block_size);                // 4 - 1 byte
+    ASSERT_EQ(0x01, *payload & 0x01);             // BOOL = true
+    ASSERT_EQ(0x00, *payload & 0xFE);             // unused bits zeroed
+}
+
+TEST(CoE_Response_Bits, SDO_download_bool_writes_only_target_bit)
+{
+    MockESC esc;
+    Mailbox mbx{&esc, TEST_MAILBOX_SIZE, 1};
+    mbx.enableCoE(createBitObjectDictionary());
+
+    // Pre-set neighbours so we can check they survive: GPIO2 = 1 (bit 1 of stored byte? no:
+    // each entry has its own owned byte before mapping). For SDO download here the BOOL
+    // entry has its own storage with data_bit_offset=0; the test verifies the value lands
+    // in the low bit of that byte.
+    uint32_t value_to_download = 0x01; // BOOL true
+    uint32_t size = 1;                  // 1 octet on the wire
+    mailbox::request::SDOMessage req{TEST_MAILBOX_SIZE, 0x6000, 2, false,
+                                     CoE::SDO::request::DOWNLOAD,
+                                     &value_to_download, &size, 1ms};
+    std::vector<uint8_t> raw(req.data(), req.data() + TEST_MAILBOX_SIZE);
+
+    auto response_msg = createSDOMessage(&mbx, std::move(raw));
+    ASSERT_EQ(mailbox::ProcessingResult::FINALIZE, response_msg->process());
+
+    auto const& msg = mbx.readyToSend();
+    auto header  = pointData<mailbox::Header>(msg.data());
+    auto coe     = pointData<CoE::Header>(header);
+    auto sdo     = pointData<CoE::ServiceData>(coe);
+    ASSERT_EQ(CoE::Service::SDO_RESPONSE, coe->service);
+    ASSERT_EQ(CoE::SDO::response::DOWNLOAD, sdo->command);
+
+    // GPIO2 stored byte must now have bit 0 (its data_bit_offset) set
+    auto const& entries = mbx.getDictionary().at(0).entries;
+    ASSERT_EQ(0x01, *static_cast<uint8_t const*>(entries.at(2).data) & 0x01);
+}
+
+TEST(CoE_Response_Bits, SDO_download_bool_size_mismatch_aborts)
+{
+    MockESC esc;
+    Mailbox mbx{&esc, TEST_MAILBOX_SIZE, 1};
+    mbx.enableCoE(createBitObjectDictionary());
+
+    // Send 4 bytes for a 1-bit BOOL entry → expect DATA_TYPE_LENGTH_MISMATCH
+    std::vector<uint8_t> raw = createTestWriteSDO(0x6000, 1, 0xCAFEBABE);
+    auto response_msg = createSDOMessage(&mbx, std::move(raw));
+    ASSERT_EQ(mailbox::ProcessingResult::FINALIZE, response_msg->process());
+
+    auto const& msg = mbx.readyToSend();
+    auto header  = pointData<mailbox::Header>(msg.data());
+    auto coe     = pointData<CoE::Header>(header);
+    auto sdo     = pointData<CoE::ServiceData>(coe);
+    auto payload = pointData<uint32_t>(sdo);
+    ASSERT_EQ(CoE::Service::SDO_REQUEST, coe->service);
+    ASSERT_EQ(CoE::SDO::request::ABORT, sdo->command);
+    ASSERT_EQ(CoE::SDO::abort::DATA_TYPE_LENGTH_MISMATCH, *payload);
+}
+
+TEST(CoE_Response_Bits, SDO_upload_complete_packs_bits)
+{
+    MockESC esc;
+    Mailbox mbx{&esc, TEST_MAILBOX_SIZE, 1};
+    mbx.enableCoE(createBitObjectDictionary());
+
+    // Complete-access read of object 0x6000 starting at SI 1 (skip count byte).
+    // Expected wire payload: 1 octet packed as bit0=GPIO1=1, bit1=GPIO2=0, bit2=GPIO3=1, bit3=GPIO4=0 → 0x05.
+    std::vector<uint8_t> raw = createTestReadSDO(0x6000, 1, true);
+    auto response_msg = createSDOMessage(&mbx, std::move(raw));
+    ASSERT_EQ(mailbox::ProcessingResult::FINALIZE, response_msg->process());
+
+    auto const& msg = mbx.readyToSend();
+    auto header  = pointData<mailbox::Header>(msg.data());
+    auto coe     = pointData<CoE::Header>(header);
+    auto sdo     = pointData<CoE::ServiceData>(coe);
+    auto size    = pointData<uint32_t>(sdo);
+    auto payload = pointData<uint8_t>(size);
+
+    ASSERT_EQ(CoE::Service::SDO_RESPONSE, coe->service);
+    ASSERT_EQ(CoE::SDO::response::UPLOAD, sdo->command);
+    ASSERT_EQ(1u, *size);                              // 4 bits → 1 byte
+    ASSERT_EQ(0x05, payload[0] & 0x0F);                // GPIO1 + GPIO3 set
+    ASSERT_EQ(0x00, payload[0] & 0xF0);                // padding bits zeroed
+}
+
+TEST(CoE_Response_Bits, SDO_upload_complete_from_SI0_includes_count_byte)
+{
+    // CA upload starting at SI 0: payload must include the count byte (8 bits at wire
+    // bit 0), then the 4 BOOLs at wire bits 8..11. Total = 12 bits → 2 bytes wire.
+    MockESC esc;
+    Mailbox mbx{&esc, TEST_MAILBOX_SIZE, 1};
+    mbx.enableCoE(createBitObjectDictionary());
+
+    std::vector<uint8_t> raw = createTestReadSDO(0x6000, 0, true);
+    auto response_msg = createSDOMessage(&mbx, std::move(raw));
+    ASSERT_EQ(mailbox::ProcessingResult::FINALIZE, response_msg->process());
+
+    auto const& msg = mbx.readyToSend();
+    auto header  = pointData<mailbox::Header>(msg.data());
+    auto coe     = pointData<CoE::Header>(header);
+    auto sdo     = pointData<CoE::ServiceData>(coe);
+    auto size    = pointData<uint32_t>(sdo);
+    auto payload = pointData<uint8_t>(size);
+
+    ASSERT_EQ(CoE::Service::SDO_RESPONSE, coe->service);
+    ASSERT_EQ(CoE::SDO::response::UPLOAD, sdo->command);
+    ASSERT_EQ(2u, *size);                   // 12 bits → 2 bytes
+    EXPECT_EQ(payload[0], 4);               // count byte
+    EXPECT_EQ(payload[1] & 0x0F, 0x05);     // GPIO1 + GPIO3 set
+    EXPECT_EQ(payload[1] & 0xF0, 0x00);     // padding zeroed
+}
+
+TEST(CoE_Response_Bits, SDO_upload_complete_count_zero_replies_empty)
+{
+    // Regression: an object with SI 0 count == 0 must not underflow the pre-zero
+    // arithmetic when CA starts at SI 1. Reply should be size = 0, no crash.
+    MockESC esc;
+    Mailbox mbx{&esc, TEST_MAILBOX_SIZE, 1};
+    {
+        CoE::Dictionary dict;
+        CoE::Object obj{0x6000, CoE::ObjectCode::RECORD, "Empty", {}};
+        CoE::addEntry<uint8_t>(obj, 0, 8, 0,  CoE::Access::READ, CoE::DataType::UNSIGNED8, "Count", uint8_t{0});
+        // A populated entry exists in the vector but the count says 0 → CA should ignore it.
+        CoE::addEntry<uint8_t>(obj, 1, 1, 8,  CoE::Access::READ, CoE::DataType::BOOLEAN,   "GPIO1", uint8_t{1});
+        dict.push_back(std::move(obj));
+        mbx.enableCoE(std::move(dict));
+    }
+
+    std::vector<uint8_t> raw = createTestReadSDO(0x6000, 1, true);
+    auto response_msg = createSDOMessage(&mbx, std::move(raw));
+    ASSERT_EQ(mailbox::ProcessingResult::FINALIZE, response_msg->process());
+
+    auto const& msg = mbx.readyToSend();
+    auto header  = pointData<mailbox::Header>(msg.data());
+    auto coe     = pointData<CoE::Header>(header);
+    auto sdo     = pointData<CoE::ServiceData>(coe);
+    auto size    = pointData<uint32_t>(sdo);
+
+    ASSERT_EQ(CoE::Service::SDO_RESPONSE, coe->service);
+    ASSERT_EQ(CoE::SDO::response::UPLOAD, sdo->command);
+    EXPECT_EQ(0u, *size);
+}
+
+TEST(CoE_Response_Bits, SDO_download_complete_unpacks_bits)
+{
+    MockESC esc;
+    Mailbox mbx{&esc, TEST_MAILBOX_SIZE, 1};
+    mbx.enableCoE(createBitObjectDictionary());
+
+    // Send a wire payload of 5 bytes (forces Normal-Download framing instead of expedited,
+    // which is what downloadComplete handles): byte 0 packs the 4 BOOLs
+    // (bits 1 and 3 set → GPIO2=1, GPIO4=1, GPIO1=GPIO3=0); bytes 1..4 are unused padding.
+    uint8_t value[5] = {0x0A, 0x00, 0x00, 0x00, 0x00};
+    uint32_t size = sizeof(value);
+    mailbox::request::SDOMessage req{TEST_MAILBOX_SIZE, 0x6000, 1, true,
+                                     CoE::SDO::request::DOWNLOAD,
+                                     value, &size, 1ms};
+    std::vector<uint8_t> raw(req.data(), req.data() + TEST_MAILBOX_SIZE);
+
+    auto response_msg = createSDOMessage(&mbx, std::move(raw));
+    ASSERT_EQ(mailbox::ProcessingResult::FINALIZE, response_msg->process());
+
+    auto const& entries = mbx.getDictionary().at(0).entries;
+    EXPECT_EQ(*static_cast<uint8_t const*>(entries.at(1).data) & 0x01, 0); // GPIO1
+    EXPECT_EQ(*static_cast<uint8_t const*>(entries.at(2).data) & 0x01, 1); // GPIO2
+    EXPECT_EQ(*static_cast<uint8_t const*>(entries.at(3).data) & 0x01, 0); // GPIO3
+    EXPECT_EQ(*static_cast<uint8_t const*>(entries.at(4).data) & 0x01, 1); // GPIO4
+}
