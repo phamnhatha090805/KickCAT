@@ -231,7 +231,7 @@ namespace kickcat::CoE
                 data = loadHexBinary(node_default_data);
             }
 
-            if (data.size() != static_cast<std::size_t>((entry.bitlen + 7) / 8))
+            if (data.size() != (entry.bitlen / 8))
             {
                 esi_warning("Cannot load default data for 0x%04x.%d, expected size mismatch.\n"
                         "-> Got %ld bits, expected: %d bit\n"
@@ -240,7 +240,7 @@ namespace kickcat::CoE
                     data.size() * 8, entry.bitlen);
                 return;
             }
-            entry.data = malloc((entry.bitlen + 7) / 8);
+            entry.data = malloc(entry.bitlen / 8);
             std::memcpy(entry.data, data.data(), data.size());
             return;
         }
@@ -260,21 +260,9 @@ namespace kickcat::CoE
                 value = std::stoll(text, nullptr, 10);
             }
 
-            uint32_t alloc_size = (entry.bitlen + 7) / 8;
-            uint32_t copy_size  = entry.bitlen / 8;
-            entry.data = malloc(alloc_size);
-            std::memset(entry.data, 0, alloc_size);
-
-            if (entry.bitlen < 8)
-            {
-                // Sub-byte entry: pack the low `bitlen` bits of the parsed value.
-                uint8_t mask = static_cast<uint8_t>((1u << entry.bitlen) - 1);
-                *static_cast<uint8_t*>(entry.data) = static_cast<uint8_t>(value) & mask;
-            }
-            else
-            {
-                std::memcpy(entry.data, &value, copy_size);
-            }
+            uint32_t size = entry.bitlen / 8;
+            entry.data = malloc(size);
+            std::memcpy(entry.data, &value, size);
         }
     }
 
