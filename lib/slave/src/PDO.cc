@@ -164,6 +164,13 @@ namespace kickcat
                 return false;
             }
 
+            if (index == 0x0000 && sub == 0)
+            {
+                // this is padding entry, just skip it, it is used to align the next entries on byte boundary
+                bit_offset += bits;
+                continue;
+            }
+
             auto [od_obj, od_entry] = CoE::findObject(dict, index, sub);
             if (not od_entry)
             {
