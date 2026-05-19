@@ -69,10 +69,25 @@ namespace kickcat
 
     void EmulatedESC::loadEeprom()
     {
-        // Device emulation
+        // 1. ESC Configuration (Word 0, high byte)
         memory_.esc_configuration = eeprom_[0] >> 8;
 
-        memory_.station_alias = eeprom_[4]; // fourth word of eeprom, at first load
+        // 2. Station Alias (Word 4)
+        // Note: If you use Word 4 for Alias, ensure your BIN file actually has 
+        // an alias there, otherwise it may interfere with identity reading logic.
+        memory_.station_alias = eeprom_[4];
+
+        // 3. MANDATORY IDENTITY OFFSETS (Words 8 through 13)
+        // In many Beckhoff BIN files, the Identity section starts at Word 8 (Byte 16)
+        
+        // Vendor ID (Word 8 & 9)
+        vendor_id_ = (static_cast<uint32_t>(eeprom_[9]) << 16) | eeprom_[8];
+        
+        // Product Code (Word 10 & 11)
+        product_code_ = (static_cast<uint32_t>(eeprom_[11]) << 16) | eeprom_[10];
+        
+        // Revision Number (Word 12 & 13)
+        revision_number_ = (static_cast<uint32_t>(eeprom_[13]) << 16) | eeprom_[12];
     }
 
 
@@ -345,42 +360,46 @@ namespace kickcat
         {
             State before  = static_cast<State>(memory_.al_status  & 0xf);
             State current = static_cast<State>(memory_.al_control & 0xf);
-            simu_info("%f  %s -> %s  \n", seconds_f(since_epoch() - start).count(), toString(before), toString(current));
+
+            memory_.al_status_code = 0;
+            memory_.al_status &= ~AL_STATUS_ERR_IND;
 
             switch (current)
             {
-                case State::BOOT: { break; }
-                case State::INIT: { break; }
-                case State::PRE_OP:
+            case State::PRE_OP:
+                if (before == State::INIT)
                 {
-                    if (before == State::INIT)
-                    {
-                        configureSMs();
+                    configureSMs();
+                }
+                memory_.al_status = State::PRE_OP;
+                break;
 
-                        seconds_f wdgPDI = pdiWatchdog();
-                        seconds_f wdgPDO = pdoWatchdog();
-                        simu_info("PDI watchdog: %04fs\n", wdgPDI.count());
-                        simu_info("PDO watchdog: %04fs\n", wdgPDO.count());
-                    }
-                    break;
-                }
-                case State::SAFE_OP:
+            case State::SAFE_OP:
+                if (before == State::PRE_OP)
                 {
-                    if (before == State::PRE_OP)
-                    {
-                        configurePDOs();
-                    }
-                    break;
+                    configurePDOs();
+                    lastLogicalWrite_ = since_epoch();
                 }
-                case State::OPERATIONAL: { break; }
-                default: {}
+                memory_.watchdog_status_process_data = 1;
+                memory_.al_status = State::SAFE_OP;
+                break;
+
+            case State::OPERATIONAL:
+                if (before == State::SAFE_OP)
+                {
+                    lastLogicalWrite_ = since_epoch();
+                    memory_.watchdog_status_process_data = 1;
+                    memory_.al_status = State::OPERATIONAL;
+                }
+                break;
+
+            case State::INIT:
+                memory_.al_status = State::INIT;
+                break;
+
+            default:
+                break;
             }
-        }
-
-        // Mirror AL_STATUS - Device Emulation
-        if(memory_.esc_configuration & 0x01)
-        {
-            memory_.al_status = memory_.al_control;
         }
 
         // Handle eeprom access
@@ -441,7 +460,10 @@ namespace kickcat
             }
         }
 
-        checkWatchdog();
+        if (memory_.al_status & State::OPERATIONAL)
+        {
+            checkWatchdog();
+        }
     }
 
 
