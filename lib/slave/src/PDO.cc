@@ -3,6 +3,9 @@
 #include "kickcat/CoE/protocol.h"
 #include "protocol.h"
 
+#include <cstring>
+#include <iostream>
+#include <iomanip>
 
 namespace kickcat
 {
@@ -10,9 +13,9 @@ namespace kickcat
     {
         try
         {
-            auto [indexIn, pdoIn]   = esc_->findSm(SM_CONTROL_MODE_BUFFERED | SM_CONTROL_DIRECTION_READ);
+            auto [indexIn, pdoIn] = esc_->findSm(SM_CONTROL_MODE_BUFFERED | SM_CONTROL_DIRECTION_READ);
             auto [indexOut, pdoOut] = esc_->findSm(SM_CONTROL_MODE_BUFFERED | SM_CONTROL_DIRECTION_WRITE);
-            
+
             if (pdoIn.length > 0)
             {
                 sm_input_ = SYNC_MANAGER_PI_IN(indexIn, pdoIn.start_address, pdoIn.length);
@@ -22,7 +25,7 @@ namespace kickcat
                 sm_input_ = SyncManagerConfig{indexIn, 0, 0, 0, SyncManagerType::Unused};
             }
 
-            if(pdoOut.length > 0)
+            if (pdoOut.length > 0)
             {
                 sm_output_ = SYNC_MANAGER_PI_OUT(indexOut, pdoOut.start_address, pdoOut.length);
             }
@@ -31,7 +34,7 @@ namespace kickcat
                 sm_output_ = SyncManagerConfig{indexOut, 0, 0, 0, SyncManagerType::Unused};
             }
         }
-        catch (std::exception const& e)
+        catch (std::exception const &e)
         {
             return -EINVAL;
         }
@@ -69,13 +72,13 @@ namespace kickcat
         }
     }
 
-    void PDO::setInput(void* buffer, uint32_t size)
+    void PDO::setInput(void *buffer, uint32_t size)
     {
         input_ = buffer;
         input_size_ = size;
     }
 
-    void PDO::setOutput(void* buffer, uint32_t size)
+    void PDO::setOutput(void *buffer, uint32_t size)
     {
         output_ = buffer;
         output_size_ = size;
@@ -112,21 +115,21 @@ namespace kickcat
         }
     }
 
-    std::vector<uint16_t> PDO::parseAssignment(CoE::Dictionary& dict, uint16_t assign_idx)
+    std::vector<uint16_t> PDO::parseAssignment(CoE::Dictionary &dict, uint16_t assign_idx)
     {
         std::vector<uint16_t> pdo_indices;
 
         auto [obj0, entry0] = CoE::findObject(dict, assign_idx, 0);
         if (entry0)
         {
-            uint8_t count = *static_cast<uint8_t*>(entry0->data);
+            uint8_t count = *static_cast<uint8_t *>(entry0->data);
 
             for (uint8_t i = 1; i <= count; ++i)
             {
                 auto [obj, entry] = CoE::findObject(dict, assign_idx, i);
                 if (entry)
                 {
-                    pdo_indices.push_back(*static_cast<uint16_t*>(entry->data));
+                    pdo_indices.push_back(*static_cast<uint16_t *>(entry->data));
                 }
             }
         }
@@ -134,7 +137,7 @@ namespace kickcat
         return pdo_indices;
     }
 
-    bool PDO::parsePdoMap(CoE::Dictionary& dict, uint16_t pdo_idx, void* buffer, uint16_t& bit_offset, uint32_t max_size)
+    bool PDO::parsePdoMap(CoE::Dictionary &dict, uint16_t pdo_idx, void *buffer, uint16_t &bit_offset, uint32_t max_size)
     {
         auto [obj0, entry0] = CoE::findObject(dict, pdo_idx, 0);
         if (not entry0)
@@ -142,7 +145,7 @@ namespace kickcat
             return false;
         }
 
-        uint8_t count = *static_cast<uint8_t*>(entry0->data);
+        uint8_t count = *static_cast<uint8_t *>(entry0->data);
 
         for (uint8_t i = 1; i <= count; ++i)
         {
@@ -152,11 +155,18 @@ namespace kickcat
                 return false;
             }
 
-            uint32_t mapping = *static_cast<uint32_t*>(entry->data);
+            uint32_t mapping = *static_cast<uint32_t *>(entry->data);
 
             uint16_t index = static_cast<uint16_t>((mapping & CoE::PDO::MAPPING_INDEX_MASK) >> CoE::PDO::MAPPING_INDEX_SHIFT);
-            uint8_t  sub   = static_cast<uint8_t>((mapping & CoE::PDO::MAPPING_SUB_MASK) >> CoE::PDO::MAPPING_SUB_SHIFT);
-            uint8_t  bits  = static_cast<uint8_t>(mapping & CoE::PDO::MAPPING_LENGTH_MASK);
+            uint8_t sub = static_cast<uint8_t>((mapping & CoE::PDO::MAPPING_SUB_MASK) >> CoE::PDO::MAPPING_SUB_SHIFT);
+            uint8_t bits = static_cast<uint8_t>(mapping & CoE::PDO::MAPPING_LENGTH_MASK);
+
+            std::cerr << "PDO map 0x" << std::hex << pdo_idx
+                      << " -> 0x" << index
+                      << ":" << std::dec << (int)sub
+                      << " bits=" << (int)bits
+                      << " bit_offset=" << bit_offset
+                      << "\n";
 
             if (max_size > 0 and static_cast<uint32_t>((bit_offset + bits + 7) / 8) > max_size)
             {
@@ -178,10 +188,10 @@ namespace kickcat
             }
 
             // Aliasing logic
-            void* old_data = od_entry->data;
+            void *old_data = od_entry->data;
             bool old_is_mapped = od_entry->is_mapped;
 
-            uint8_t* new_ptr = static_cast<uint8_t*>(buffer) + (bit_offset / 8);
+            uint8_t *new_ptr = static_cast<uint8_t *>(buffer) + (bit_offset / 8);
 
             od_entry->data = new_ptr;
             od_entry->is_mapped = true; // data has been remapped/aliased
@@ -202,11 +212,17 @@ namespace kickcat
         return true;
     }
 
-    StatusCode PDO::configureMapping(CoE::Dictionary& dict)
+    StatusCode PDO::configureMapping(CoE::Dictionary &dict)
     {
         {
             uint16_t bit_offset = 0;
             std::vector<uint16_t> pdo_indices = parseAssignment(dict, 0x1C13);
+
+            std::cerr << "TxPDO assignment 0x1C13:\n";
+            for (auto pdo : pdo_indices)
+            {
+                std::cerr << "  0x" << std::hex << pdo << std::dec << "\n";
+            }
 
             for (auto pdo : pdo_indices)
             {
@@ -220,6 +236,12 @@ namespace kickcat
         {
             uint16_t bit_offset = 0;
             std::vector<uint16_t> pdo_indices = parseAssignment(dict, 0x1C12);
+
+            std::cerr << "RxPDO assignment 0x1C12:\n";
+            for (auto pdo : pdo_indices)
+            {
+                std::cerr << "  0x" << std::hex << pdo << std::dec << "\n";
+            }
 
             for (auto pdo : pdo_indices)
             {
