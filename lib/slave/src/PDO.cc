@@ -214,6 +214,7 @@ namespace kickcat
 
     StatusCode PDO::configureMapping(CoE::Dictionary &dict)
     {
+        printf("PDO configureMapping dict address = %p\n", (void *)&dict);
         {
             uint16_t bit_offset = 0;
             std::vector<uint16_t> pdo_indices = parseAssignment(dict, 0x1C13);

@@ -1,4 +1,4 @@
 {
-    "eeprom": "/home/etherdog/etherdog-fmu/Examples/EsiFiles/BIN/Box 1 (EtherDOG).bin",
-    "coe_xml": "/home/etherdog/etherdog-fmu/Examples/EsiFiles/XML/EtherDOG.xml"
+    "eeprom": "/home/etherdog/etherdog-fmu/Examples/EsiFiles/BIN/Term 2 (EL1004).bin",
+    "coe_xml": "/home/etherdog/etherdog-fmu/Examples/EsiFiles/XML/Beckhoff EL1xxx.xml"
 }
