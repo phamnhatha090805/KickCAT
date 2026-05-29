@@ -57,6 +57,12 @@ namespace kickcat::CoE
 
         Object create(tinyxml2::XMLNode* node);
 
+        void loadPdos(Dictionary& dictionary);
+        void loadPdo(Dictionary& dictionary, tinyxml2::XMLElement* pdo, bool tx);
+        Object* findOrCreateObject(Dictionary& dictionary, uint16_t index, std::string const& name);
+        Entry* findOrCreateEntry(Object& object, uint8_t subindex, uint16_t bitlen, uint16_t bitoff,
+                                uint16_t access, DataType type, std::string const& description);
+        DataType dataTypeFromBitLen(uint16_t bitlen);
 
         // Manage XML entry point
         tinyxml2::XMLDocument doc_;

@@ -121,17 +121,20 @@ namespace kickcat::CoE
             new_device.revision_number = revision_number;
             printf("Found device with vendor id 0x%08x, product code 0x%08x, revision number 0x%08x\n", new_device.vendor_id, new_device.product_code, new_device.revision_number);
             profile_ = device_->FirstChildElement("Profile");
+            dictionary_ = nullptr;
+            dtypes_ = nullptr;
+            objects_ = nullptr;
             if (profile_)
             {
                 dictionary_ = profile_->FirstChildElement("Dictionary");
                 if (dictionary_)
                 {
                     // If we find the dictionary, set the remaining pointers and break
-                    dtypes_  = firstChildElement(dictionary_, "DataTypes");
-                    objects_ = firstChildElement(dictionary_, "Objects");
-                    new_device.dictionary = loadDictionary();
+                    dtypes_  = dictionary_->FirstChildElement("DataTypes");
+                    objects_ = dictionary_->FirstChildElement("Objects");
                 }
             }
+            new_device.dictionary = loadDictionary();
             devices.push_back(std::move(new_device));
             // Move to the next <Device> in the XML file (e.g., skip EL1002)
             device_ = device_->NextSiblingElement("Device");
@@ -144,14 +147,19 @@ namespace kickcat::CoE
     {
         Dictionary dictionary;
 
-        // loop over dictionary
-        auto node_object = objects_->FirstChildElement();
-        while (node_object)
+        if (objects_) 
         {
-            CoE::Object obj = create(node_object);
-            dictionary.push_back(std::move(obj));
-            node_object = node_object->NextSiblingElement();
+            auto node_object = objects_->FirstChildElement();
+            // loop over dictionary
+            while (node_object)
+            {
+                CoE::Object obj = create(node_object);
+                dictionary.push_back(std::move(obj));
+                node_object = node_object->NextSiblingElement();
+            }
         }
+
+        loadPdos(dictionary);
 
         // load sync managers type object
         CoE::Object sms_type;
@@ -162,7 +170,7 @@ namespace kickcat::CoE
         // create first entry (array size)
         sms_type.entries.push_back(CoE::Entry{0, 8, 0, Access::READ, DataType::UNSIGNED8, "Subindex 0"});
 
-        auto sm = firstChildElement(device_, "Sm");
+        auto sm = device_->FirstChildElement("Sm");
         while (sm)
         {
             CoE::Entry entry;
@@ -441,7 +449,6 @@ namespace kickcat::CoE
         return dtype;
     }
 
-
     Object EsiParser::create(XMLNode* node)
     {
         Object object;
@@ -559,5 +566,214 @@ namespace kickcat::CoE
             }
         }
         return object;
+    }
+
+    DataType EsiParser::dataTypeFromBitLen(uint16_t bitlen)
+    {
+        switch (bitlen)
+        {
+            case 1:  return DataType::BOOLEAN;
+            case 2:  return DataType::BIT2;
+            case 3:  return DataType::BIT3;
+            case 4:  return DataType::BIT4;
+            case 5:  return DataType::BIT5;
+            case 6:  return DataType::BIT6;
+            case 7:  return DataType::BIT7;
+            case 8:  return DataType::UNSIGNED8;
+            case 16: return DataType::UNSIGNED16;
+            case 32: return DataType::UNSIGNED32;
+            case 64: return DataType::UNSIGNED64;
+            default: return DataType::UNKNOWN;
+        }
+    }
+
+    Object* EsiParser::findOrCreateObject(Dictionary& dictionary, uint16_t index, std::string const& name)
+    {
+        for (auto& object : dictionary)
+        {
+            if (object.index == index)
+            {
+                if (object.name.empty())
+                {
+                    object.name = name;
+                }
+                return &object;
+            }
+        }
+
+        Object object;
+        object.index = index;
+        object.code = ObjectCode::RECORD;
+        object.name = name.empty() ? ("Object 0x" + std::to_string(index)) : name;
+
+        dictionary.push_back(std::move(object));
+        return &dictionary.back();
+    }
+
+    Entry* EsiParser::findOrCreateEntry(Object& object, uint8_t subindex, uint16_t bitlen, uint16_t bitoff,
+                                        uint16_t access, DataType type, std::string const& description)
+    {
+        for (auto& entry : object.entries)
+        {
+            if (entry.subindex == subindex)
+            {
+                if (entry.description.empty() && !description.empty())
+                {
+                    entry.description = description;
+                }
+
+                if (entry.bitlen == 0)
+                {
+                    entry.bitlen = bitlen;
+                }
+
+                entry.access |= access;
+                return &entry;
+            }
+        }
+
+        Entry entry;
+        entry.subindex = subindex;
+        entry.bitlen = bitlen;
+        entry.bitoff = bitoff;
+        entry.access = access;
+        entry.type = type;
+        entry.description = description.empty() ? ("SubIndex " + std::to_string(subindex)) : description;
+
+        object.entries.push_back(std::move(entry));
+        return &object.entries.back();
+    }
+
+    void EsiParser::loadPdos(Dictionary& dictionary)
+    {
+        for (auto tx = device_->FirstChildElement("TxPdo"); tx; tx = tx->NextSiblingElement("TxPdo"))
+        {
+            loadPdo(dictionary, tx, true);
+        }
+
+        for (auto rx = device_->FirstChildElement("RxPdo"); rx; rx = rx->NextSiblingElement("RxPdo"))
+        {
+            loadPdo(dictionary, rx, false);
+        }
+    }
+
+    void EsiParser::loadPdo(Dictionary& dictionary, XMLElement* pdo, bool tx)
+    {
+        auto pdo_index_node = pdo->FirstChildElement("Index");
+        if (!pdo_index_node || !pdo_index_node->GetText())
+        {
+            return;
+        }
+
+        uint16_t pdo_index = toNumber<uint16_t>(pdo_index_node);
+
+        std::string pdo_name = tx ? "TxPDO" : "RxPDO";
+        if (auto name = pdo->FirstChildElement("Name"); name && name->GetText())
+        {
+            pdo_name = name->GetText();
+        }
+
+        // Create PDO map object.
+        findOrCreateObject(dictionary, pdo_index, pdo_name);
+
+        uint8_t count = 0;
+        uint16_t pdo_map_bitoff = 16;
+        uint16_t process_bitoff = 0;
+
+        for (auto entry_node = pdo->FirstChildElement("Entry");
+            entry_node;
+            entry_node = entry_node->NextSiblingElement("Entry"))
+        {
+            auto index_node = entry_node->FirstChildElement("Index");
+            auto sub_node   = entry_node->FirstChildElement("SubIndex");
+            auto bit_node   = entry_node->FirstChildElement("BitLen");
+
+            if (!index_node || !sub_node || !bit_node ||
+                !index_node->GetText() || !sub_node->GetText() || !bit_node->GetText())
+            {
+                continue;
+            }
+
+            uint16_t index = toNumber<uint16_t>(index_node);
+            uint8_t subindex = toNumber<uint8_t>(sub_node);
+            uint16_t bitlen = toNumber<uint16_t>(bit_node);
+
+            std::string entry_name;
+            if (auto name = entry_node->FirstChildElement("Name"); name && name->GetText())
+            {
+                entry_name = name->GetText();
+            }
+
+            uint32_t mapping_value =
+                (static_cast<uint32_t>(index) << 16) |
+                (static_cast<uint32_t>(subindex) << 8) |
+                static_cast<uint32_t>(bitlen);
+
+            ++count;
+
+            // Re-find PDO object every time. Do not reuse old pointer.
+            Object* pdo_object = findOrCreateObject(dictionary, pdo_index, pdo_name);
+
+            Entry* map_entry = findOrCreateEntry(
+                *pdo_object,
+                count,
+                32,
+                pdo_map_bitoff,
+                Access::READ,
+                DataType::PDO_MAPPING,
+                "SubIndex " + std::to_string(count)
+            );
+
+            if (!map_entry->data)
+            {
+                map_entry->data = malloc(sizeof(uint32_t));
+            }
+
+            std::memcpy(map_entry->data, &mapping_value, sizeof(uint32_t));
+            map_entry->bitlen = 32;
+            map_entry->bitoff = pdo_map_bitoff;
+            map_entry->type = DataType::PDO_MAPPING;
+
+            pdo_map_bitoff += 32;
+
+            if (index != 0x0000 || subindex != 0)
+            {
+                Object* real_object = findOrCreateObject(dictionary, index, pdo_name);
+
+                findOrCreateEntry(
+                    *real_object,
+                    subindex,
+                    bitlen,
+                    process_bitoff,
+                    Access::READ | (tx ? Access::TxPDO : Access::RxPDO),
+                    dataTypeFromBitLen(bitlen),
+                    entry_name
+                );
+            }
+
+            process_bitoff += bitlen;
+        }
+
+        // Re-find PDO object again at the end.
+        Object* pdo_object = findOrCreateObject(dictionary, pdo_index, pdo_name);
+
+        Entry* sub0 = findOrCreateEntry(
+            *pdo_object,
+            0,
+            8,
+            0,
+            Access::READ,
+            DataType::UNSIGNED8,
+            "SubIndex 000"
+        );
+
+        if (!sub0->data)
+        {
+            sub0->data = malloc(sizeof(uint8_t));
+        }
+
+        std::memcpy(sub0->data, &count, sizeof(uint8_t));
+        sub0->bitlen = 8;
+        sub0->type = DataType::UNSIGNED8;
     }
 }
