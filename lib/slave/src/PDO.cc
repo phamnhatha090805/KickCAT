@@ -124,12 +124,25 @@ namespace kickcat
         {
             uint8_t count = *static_cast<uint8_t *>(entry0->data);
 
+            std::cerr << "[PDO CONFIG] assignment object=0x"
+                      << std::hex << assign_idx
+                      << " count=" << std::dec << int(count)
+                      << std::endl;
+
             for (uint8_t i = 1; i <= count; ++i)
             {
                 auto [obj, entry] = CoE::findObject(dict, assign_idx, i);
                 if (entry)
                 {
-                    pdo_indices.push_back(*static_cast<uint16_t *>(entry->data));
+                    uint16_t pdo_index = *static_cast<uint16_t *>(entry->data);
+
+                    std::cerr << "[PDO CONFIG] assignment object=0x"
+                              << std::hex << assign_idx
+                              << " sub=" << std::dec << int(i)
+                              << " value=0x" << std::hex << pdo_index
+                              << std::dec << std::endl;
+
+                    pdo_indices.push_back(pdo_index);
                 }
             }
         }
@@ -142,10 +155,17 @@ namespace kickcat
         auto [obj0, entry0] = CoE::findObject(dict, pdo_idx, 0);
         if (not entry0)
         {
-            return false;
+            std::cerr << "[PDO MAP] cannot find PDO object 0x"
+                      << std::hex << pdo_idx << std::dec << std::endl;
+            return {};
         }
 
         uint8_t count = *static_cast<uint8_t *>(entry0->data);
+
+        std::cerr << "[PDO MAP] PDO object=0x"
+                  << std::hex << pdo_idx
+                  << " count=" << std::dec << int(count)
+                  << std::endl;
 
         for (uint8_t i = 1; i <= count; ++i)
         {
@@ -184,6 +204,10 @@ namespace kickcat
             auto [od_obj, od_entry] = CoE::findObject(dict, index, sub);
             if (not od_entry)
             {
+                std::cerr << "[PDO MAP] cannot find mapped entry 0x"
+                          << std::hex << index
+                          << ":" << std::dec << int(sub)
+                          << std::endl;
                 return false;
             }
 
@@ -195,6 +219,16 @@ namespace kickcat
 
             od_entry->data = new_ptr;
             od_entry->is_mapped = true; // data has been remapped/aliased
+
+            std::cerr << "[PDO MAP] mapped object=0x"
+                      << std::hex << index
+                      << ":" << std::dec << int(sub)
+                      << " desc='" << od_entry->description << "'"
+                      << " bit_offset=" << bit_offset
+                      << " bits=" << int(bits)
+                      << " data=" << static_cast<void *>(od_entry->data)
+                      << " is_mapped=" << od_entry->is_mapped
+                      << std::endl;
 
             if (old_data)
             {
