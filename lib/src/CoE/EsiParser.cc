@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <stdexcept>
+#include <iostream>
 #include "kickcat/debug.h"
 
 #include "kickcat/CoE/EsiParser.h"
@@ -646,14 +647,106 @@ namespace kickcat::CoE
 
     void EsiParser::loadPdos(Dictionary& dictionary)
     {
+        std::vector<uint16_t> tx_pdos;
+        std::vector<uint16_t> rx_pdos;
+
         for (auto tx = device_->FirstChildElement("TxPdo"); tx; tx = tx->NextSiblingElement("TxPdo"))
         {
+            auto index = tx->FirstChildElement("Index");
+            if (index && index->GetText())
+            {
+                tx_pdos.push_back(toNumber<uint16_t>(index));
+            }
+
             loadPdo(dictionary, tx, true);
         }
 
         for (auto rx = device_->FirstChildElement("RxPdo"); rx; rx = rx->NextSiblingElement("RxPdo"))
         {
+            auto index = rx->FirstChildElement("Index");
+            if (index && index->GetText())
+            {
+                rx_pdos.push_back(toNumber<uint16_t>(index));
+            }
+
             loadPdo(dictionary, rx, false);
+        }
+
+        createPdoAssignment(dictionary, 0x1C13, tx_pdos, "TxPDO assign");
+        createPdoAssignment(dictionary, 0x1C12, rx_pdos, "RxPDO assign");
+    }
+
+    void EsiParser::createPdoAssignment(Dictionary& dictionary,
+                                        uint16_t assign_index,
+                                        std::vector<uint16_t> const& pdo_indices,
+                                        std::string const& name)
+    {
+        if (pdo_indices.empty())
+        {
+            return;
+        }
+
+        Object* assignment = findOrCreateObject(dictionary, assign_index, name);
+
+        for (auto& entry : assignment->entries)
+        {
+            if (entry.subindex == 0 && entry.data != nullptr)
+            {
+                uint8_t existing_count = *static_cast<uint8_t*>(entry.data);
+                if (existing_count > 0)
+                {
+                    return;
+                }
+            }
+        }
+
+        Entry* sub0 = findOrCreateEntry(*assignment, 0, 8, 0, Access::READ,
+                                        DataType::UNSIGNED8, "SubIndex 000");
+
+        if (!sub0->data)
+        {
+            sub0->data = malloc(sizeof(uint8_t));
+        }
+
+        uint8_t count = static_cast<uint8_t>(pdo_indices.size());
+        std::memcpy(sub0->data, &count, sizeof(uint8_t));
+        sub0->bitlen = 8;
+        sub0->type = DataType::UNSIGNED8;
+
+        uint16_t bitoff = 16;
+
+        for (uint8_t i = 0; i < count; ++i)
+        {
+            Entry* entry = findOrCreateEntry(*assignment,
+                                            i + 1,
+                                            16,
+                                            bitoff,
+                                            Access::READ,
+                                            DataType::UNSIGNED16,
+                                            "SubIndex " + std::to_string(i + 1));
+
+            if (!entry->data)
+            {
+                entry->data = malloc(sizeof(uint16_t));
+            }
+
+            uint16_t pdo_index = pdo_indices[i];
+            std::memcpy(entry->data, &pdo_index, sizeof(uint16_t));
+
+            std::cout
+            << "[PDO ASSIGNMENT] object=0x"
+            << std::hex << assign_index
+            << " sub=" << std::dec << int(i + 1)
+            << " value=0x"
+            << std::hex << pdo_index
+            << std::dec
+            << std::endl;
+
+            entry->bitlen = 16;
+            entry->bitoff = bitoff;
+            entry->type = DataType::UNSIGNED16;
+
+            bitoff += 16;
         }
     }
 

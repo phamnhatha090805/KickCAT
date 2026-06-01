@@ -59,6 +59,7 @@ namespace kickcat::CoE
 
         void loadPdos(Dictionary& dictionary);
         void loadPdo(Dictionary& dictionary, tinyxml2::XMLElement* pdo, bool tx);
+        void createPdoAssignment(Dictionary& dictionary, uint16_t assign_index, std::vector<uint16_t> const& pdo_indices, std::string const& name);
         Object* findOrCreateObject(Dictionary& dictionary, uint16_t index, std::string const& name);
         Entry* findOrCreateEntry(Object& object, uint8_t subindex, uint16_t bitlen, uint16_t bitoff,
                                 uint16_t access, DataType type, std::string const& description);
