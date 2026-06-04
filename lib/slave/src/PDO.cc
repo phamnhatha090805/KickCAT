@@ -2,6 +2,7 @@
 #include "kickcat/debug.h"
 #include "kickcat/CoE/protocol.h"
 #include "protocol.h"
+#include <iostream>
 
 
 namespace kickcat
@@ -158,17 +159,43 @@ namespace kickcat
             uint8_t  sub   = static_cast<uint8_t>((mapping & CoE::PDO::MAPPING_SUB_MASK) >> CoE::PDO::MAPPING_SUB_SHIFT);
             uint8_t  bits  = static_cast<uint8_t>(mapping & CoE::PDO::MAPPING_LENGTH_MASK);
 
+            std::cout << "[PDO DEBUG] pdo_idx=0x"
+                        << std::hex << pdo_idx
+                        << " mapping=0x" << mapping
+                        << " -> target=0x" << index
+                        << ":" << std::dec << int(sub)
+                        << " bits=" << int(bits)
+                        << std::endl;
+
             if (max_size > 0 and static_cast<uint32_t>((bit_offset + bits + 7) / 8) > max_size)
             {
                 slave_error("PDO::parsePdoMap mapping size exceeds buffer size\n");
                 return false;
             }
 
+            if (index == 0x0000 && sub == 0)
+            {
+                // this is padding entry, just skip it, it is used to align the next entries on byte boundary
+                bit_offset += bits;
+                continue;
+            }
+
             auto [od_obj, od_entry] = CoE::findObject(dict, index, sub);
             if (not od_entry)
             {
+                std::cout << "[PDO DEBUG] target OD entry NOT FOUND: 0x"
+                            << std::hex << index
+                            << ":" << std::dec << int(sub)
+                            << std::endl;
                 return false;
             }
+
+            std::cout << "[PDO DEBUG] target OD entry FOUND: 0x"
+                        << std::hex << index
+                        << ":" << std::dec << int(sub)
+                        << " desc='" << od_entry->description << "'"
+                        << " bitlen=" << od_entry->bitlen
+                        << std::endl;
 
             // Aliasing logic
             void* old_data = od_entry->data;
@@ -178,6 +205,12 @@ namespace kickcat
 
             od_entry->data = new_ptr;
             od_entry->is_mapped = true; // data has been remapped/aliased
+
+            std::cout << "[PDO DEBUG] mapped target OD entry: 0x"
+                        << std::hex << index
+                        << ":" << std::dec << int(sub)
+                        << " is_mapped=" << od_entry->is_mapped
+                        << std::endl;
 
             if (old_data)
             {
@@ -197,9 +230,20 @@ namespace kickcat
 
     StatusCode PDO::configureMapping(CoE::Dictionary& dict)
     {
+        std::cout << "[PDO DEBUG] configureMapping called" << std::endl;
         {
             uint16_t bit_offset = 0;
             std::vector<uint16_t> pdo_indices = parseAssignment(dict, 0x1C13);
+            std::cout << "[PDO DEBUG] 0x1C13 assigned PDO count = "
+                        << pdo_indices.size()
+                        << std::endl;
+
+            for (auto pdo : pdo_indices)
+            {
+                std::cout << "[PDO DEBUG] 0x1C13 assigned PDO 0x"
+                            << std::hex << pdo << std::dec
+                            << std::endl;
+            }
 
             for (auto pdo : pdo_indices)
             {
