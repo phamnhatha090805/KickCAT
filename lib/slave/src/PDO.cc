@@ -2,6 +2,7 @@
 #include "kickcat/debug.h"
 #include "kickcat/CoE/protocol.h"
 #include "protocol.h"
+#include <iostream>
 
 #include <cstring>
 #include <iostream>
@@ -22,7 +23,7 @@ namespace kickcat
             }
             else
             {
-                sm_input_ = SyncManagerConfig{indexIn, 0, 0, 0, SyncManagerType::Unused};
+                sm_input_ = SyncManagerConfig{indexIn, 0, 0, 0, SyncManager::Unused};
             }
 
             if (pdoOut.length > 0)
@@ -31,7 +32,7 @@ namespace kickcat
             }
             else
             {
-                sm_output_ = SyncManagerConfig{indexOut, 0, 0, 0, SyncManagerType::Unused};
+                sm_output_ = SyncManagerConfig{indexOut, 0, 0, 0, SyncManager::Unused};
             }
         }
         catch (std::exception const &e)
@@ -44,11 +45,11 @@ namespace kickcat
 
     StatusCode PDO::isConfigOk()
     {
-        if (sm_input_.type != SyncManagerType::Unused and not esc_->isSmValid(sm_input_))
+        if (sm_input_.type != SyncManager::Unused and not esc_->isSmValid(sm_input_))
         {
             return StatusCode::INVALID_INPUT_CONFIGURATION;
         }
-        if (sm_output_.type != SyncManagerType::Unused and not esc_->isSmValid(sm_output_))
+        if (sm_output_.type != SyncManager::Unused and not esc_->isSmValid(sm_output_))
         {
             return StatusCode::INVALID_OUTPUT_CONFIGURATION;
         }
@@ -58,7 +59,7 @@ namespace kickcat
 
     void PDO::activateOutput(bool is_activated)
     {
-        if (sm_output_.type != SyncManagerType::Unused)
+        if (sm_output_.type != SyncManager::Unused)
         {
             esc_->setSmActivate({sm_output_}, is_activated);
         }
@@ -66,7 +67,7 @@ namespace kickcat
 
     void PDO::activateInput(bool is_activated)
     {
-        if (sm_input_.type != SyncManagerType::Unused)
+        if (sm_input_.type != SyncManager::Unused)
         {
             esc_->setSmActivate({sm_input_}, is_activated);
         }
@@ -86,7 +87,7 @@ namespace kickcat
 
     void PDO::updateInput()
     {
-        if (input_ == nullptr or sm_input_.type == SyncManagerType::Unused)
+        if (input_ == nullptr or sm_input_.type == SyncManager::Unused)
         {
             return;
         }
@@ -101,7 +102,7 @@ namespace kickcat
 
     void PDO::updateOutput()
     {
-        if (output_ == nullptr or sm_output_.type == SyncManagerType::Unused)
+        if (output_ == nullptr or sm_output_.type == SyncManager::Unused)
         {
             return;
         }
@@ -210,6 +211,13 @@ namespace kickcat
                           << std::endl;
                 return false;
             }
+
+            std::cout << "[PDO DEBUG] target OD entry FOUND: 0x"
+                        << std::hex << index
+                        << ":" << std::dec << int(sub)
+                        << " desc='" << od_entry->description << "'"
+                        << " bitlen=" << od_entry->bitlen
+                        << std::endl;
 
             // Aliasing logic
             void *old_data = od_entry->data;

@@ -69,25 +69,10 @@ namespace kickcat
 
     void EmulatedESC::loadEeprom()
     {
-        // 1. ESC Configuration (Word 0, high byte)
+        // Device emulation
         memory_.esc_configuration = eeprom_[0] >> 8;
 
-        // 2. Station Alias (Word 4)
-        // Note: If you use Word 4 for Alias, ensure your BIN file actually has 
-        // an alias there, otherwise it may interfere with identity reading logic.
-        memory_.station_alias = eeprom_[4];
-
-        // 3. MANDATORY IDENTITY OFFSETS (Words 8 through 13)
-        // In many Beckhoff BIN files, the Identity section starts at Word 8 (Byte 16)
-        
-        // Vendor ID (Word 8 & 9)
-        vendor_id_ = (static_cast<uint32_t>(eeprom_[9]) << 16) | eeprom_[8];
-        
-        // Product Code (Word 10 & 11)
-        product_code_ = (static_cast<uint32_t>(eeprom_[11]) << 16) | eeprom_[10];
-        
-        // Revision Number (Word 12 & 13)
-        revision_number_ = (static_cast<uint32_t>(eeprom_[13]) << 16) | eeprom_[12];
+        memory_.station_alias = eeprom_[4]; // fourth word of eeprom, at first load
     }
 
 
@@ -391,7 +376,7 @@ namespace kickcat
                     memory_.watchdog_status_process_data = 1;
                     memory_.al_status = State::OPERATIONAL;
                 }
-                break;
+            break;
 
             case State::INIT:
                 memory_.al_status = State::INIT;

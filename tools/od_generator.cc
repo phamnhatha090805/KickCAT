@@ -5,7 +5,7 @@
 
 #include "kickcat/CoE/OD.h"
 #include "kickcat/Prints.h"
-#include "kickcat/CoE/EsiParser.h"
+#include "kickcat/ESI/Parser.h"
 
 namespace kickcat
 {
@@ -146,8 +146,8 @@ namespace kickcat
 
     CoE::Dictionary loadOD(std::string esiFileName)
     {
-        CoE::EsiParser parser;
-        return parser.loadFirstDictionaryFromFile(esiFileName);
+        ESI::Parser parser;
+        return parser.loadFile(esiFileName);
     }
 
     std::string addBeginning()

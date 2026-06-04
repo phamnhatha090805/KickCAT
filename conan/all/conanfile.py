@@ -1,7 +1,7 @@
 from conan import ConanFile
 from conan.errors import ConanInvalidConfiguration
 from conan.tools.build import check_min_cppstd
-from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout
+from conan.tools.cmake import CMakeToolchain, CMakeDeps, CMake, cmake_layout
 from conan.tools.files import get, copy
 from conan.tools.scm import Version
 import os
@@ -62,7 +62,7 @@ class KickCATRecipe(ConanFile):
     def requirements(self):
         self.requires("argparse/3.2")
         if self.options.with_esi_parser:
-            self.requires("tinyxml2/10.0.0")
+            self.requires("tinyxml2/11.0.0")
 
 
     def generate(self):
@@ -74,6 +74,8 @@ class KickCATRecipe(ConanFile):
         tc.cache_variables["BUILD_SIMULATION"] = "OFF"
         tc.cache_variables["BUILD_TOOLS"] = "OFF"
         tc.generate()
+        deps = CMakeDeps(self)
+        deps.generate()
 
     def build(self):
         cmake = CMake(self)

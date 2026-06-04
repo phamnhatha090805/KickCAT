@@ -1,0 +1,4 @@
+{
+    "eeprom": "/home/etherdog/etherdog-fmu/Examples/EsiFiles/BIN/Official Beckhoff/Term 1 (EK1100).bin",
+    "coe_xml": "/home/etherdog/etherdog-fmu/Examples/EsiFiles/XML/Official Beckhoff/Beckhoff EK11xx.xml"
+}

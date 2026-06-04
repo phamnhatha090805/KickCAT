@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<EtherCATInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="EtherCATInfo.xsd" Version="1.6">
+	<Vendor>
+		<Id>#x0CAFE</Id>
+		<Name>KickCAT</Name>
+	</Vendor>
+	<Descriptions>
+		<Groups>
+			<Group>
+				<Type>KickCAT Test Devices</Type>
+				<Name>KickCAT Test Devices</Name>
+			</Group>
+		</Groups>
+		<Devices>
+			<Device Physics="YY">
+				<Type ProductCode="#x00005555" RevisionNo="#x1">kickcat_esi_test_sm_fmmu</Type>
+				<Name>KickCAT ESI Test Sm/Fmmu/Su</Name>
+				<GroupType>KickCAT Test Devices</GroupType>
+				<Profile>
+					<ProfileNo>5005</ProfileNo>
+					<Dictionary>
+						<DataTypes>
+							<DataType>
+								<Name>UDINT</Name>
+								<BitSize>32</BitSize>
+							</DataType>
+						</DataTypes>
+						<Objects>
+							<Object>
+								<Index>#x1000</Index>
+								<Name>Device Type</Name>
+								<Type>UDINT</Type>
+								<BitSize>32</BitSize>
+								<Flags>
+									<Access>ro</Access>
+								</Flags>
+							</Object>
+						</Objects>
+					</Dictionary>
+				</Profile>
+				<Fmmu Sm="2" OpOnly="1">Outputs</Fmmu>
+				<Fmmu Sm="3">Inputs</Fmmu>
+				<Fmmu>MBoxState</Fmmu>
+				<Su SeparateSu="true" SeparateFrame="0" FrameRepeatSupport="1"/>
+				<Sm MinSize="40" MaxSize="1486" DefaultSize="128" StartAddress="#x1000" ControlByte="#x26" Enable="1">MBoxOut</Sm>
+				<Sm MinSize="40" MaxSize="1486" DefaultSize="128" StartAddress="#x1400" ControlByte="#x22" Enable="1" Virtual="1">MBoxIn</Sm>
+				<Sm DefaultSize="40" StartAddress="#x1800" ControlByte="#x64" Enable="1" OpOnly="true">Outputs</Sm>
+				<Sm DefaultSize="22" StartAddress="#x1c00" ControlByte="#x20" Enable="1">Inputs</Sm>
+				<RxPdo Sm="2" Mandatory="1" Fixed="1">
+					<Index>#x1600</Index>
+					<Name>Outputs</Name>
+					<Exclude>#x1601</Exclude>
+					<Entry>
+						<Index>#x7000</Index>
+						<SubIndex>1</SubIndex>
+						<BitLen>16</BitLen>
+						<Name>OutputWord</Name>
+						<DataType>UINT</DataType>
+					</Entry>
+				</RxPdo>
+				<TxPdo Sm="3" OSFac="2">
+					<Index>#x1A00</Index>
+					<Name>Inputs</Name>
+					<Entry>
+						<Index>#x6000</Index>
+						<SubIndex>1</SubIndex>
+						<BitLen>16</BitLen>
+						<Name>InputWord</Name>
+						<DataType>UINT</DataType>
+					</Entry>
+					<Entry>
+						<Index>#x6000</Index>
+						<SubIndex>2</SubIndex>
+						<BitLen>8</BitLen>
+						<Name>Status</Name>
+						<DataType>USINT</DataType>
+					</Entry>
+				</TxPdo>
+				<Mailbox DataLinkLayer="true">
+					<AoE AdsRouter="true" GenerateOwnNetId="1">
+						<InitCmd>
+							<Transition>PS</Transition>
+							<Data>DEADBEEF</Data>
+							<Comment>AoE init</Comment>
+						</InitCmd>
+					</AoE>
+					<EoE IP="true" MAC="1" TimeStamp="0">
+						<InitCmd>
+							<Transition>IP</Transition>
+							<Transition>PS</Transition>
+							<Type>5</Type>
+							<Data>0102</Data>
+						</InitCmd>
+					</EoE>
+					<CoE SdoInfo="1" CompleteAccess="true" PdoAssign="1" PdoConfig="1" SegmentedSdo="1" EdsFile="MyDevice.eds">
+						<InitCmd CompleteAccess="1">
+							<Transition>PS</Transition>
+							<Index>#x1C12</Index>
+							<SubIndex>#x00</SubIndex>
+							<Data AdaptAutomatically="true">0001</Data>
+							<Comment>Assign RxPDO 0x1600</Comment>
+						</InitCmd>
+						<InitCmd>
+							<Transition>PS</Transition>
+							<Index>#x1C13</Index>
+							<SubIndex>#x00</SubIndex>
+							<Data>0001</Data>
+						</InitCmd>
+					</CoE>
+					<FoE/>
+					<SoE ChannelCount="2" DriveFollowsBit3Support="1">
+						<InitCmd Chn="1">
+							<Transition>PS</Transition>
+							<IDN>32</IDN>
+							<Data>00</Data>
+						</InitCmd>
+					</SoE>
+					<VoE/>
+				</Mailbox>
+				<Dc PotentialReferenceClock="1" PdoOversampling="false">
+					<OpMode>
+						<Name>Synchron</Name>
+						<Desc>SM-Synchron</Desc>
+						<AssignActivate>#x300</AssignActivate>
+						<CycleTimeSync0 Factor="1">1000000</CycleTimeSync0>
+						<ShiftTimeSync0 Input="true" OutputDelayTime="500">100</ShiftTimeSync0>
+					</OpMode>
+					<OpMode>
+						<Name>FreeRun</Name>
+						<AssignActivate>#x000</AssignActivate>
+					</OpMode>
+				</Dc>
+				<Eeprom AssignToPdi="true">
+					<ByteSize>2048</ByteSize>
+					<ConfigData>05000000F00000000000000000000000</ConfigData>
+					<BootStrap>0010800010108000</BootStrap>
+					<Category>
+						<CatNo>30</CatNo>
+						<DataString>BootCfg</DataString>
+					</Category>
+					<Category PreserveOnlineData="1">
+						<CatNo>40</CatNo>
+						<Data>DEADBEEF</Data>
+					</Category>
+				</Eeprom>
+			</Device>
+		</Devices>
+	</Descriptions>
+</EtherCATInfo>
