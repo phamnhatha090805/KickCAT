@@ -1624,7 +1624,9 @@ CoE::Object Parser::createObject(XMLNode* node)
                 uint16_t elements = requireNumber<uint16_t>(node_array_info, "Elements", sub_where);
                 if (elements == 0)
                 {
-                    throw std::invalid_argument("ESI: <Elements> is zero in " + sub_where);
+                    node_subitem = node_subitem->NextSiblingElement("SubItem");
+                    continue;
+                    //throw std::invalid_argument("ESI: <Elements> is zero in " + sub_where);
                 }
                 if (elements > 0xFF)
                 {
