@@ -1,5 +1,5 @@
-#ifndef SLAVE_STACK_INCLUDE_PDO_H_
-#define SLAVE_STACK_INCLUDE_PDO_H_
+#ifndef KICKCAT_SLAVE_PDO_H_
+#define KICKCAT_SLAVE_PDO_H_
 
 #include "AbstractESC.h"
 #include "kickcat/protocol.h"
@@ -25,6 +25,10 @@ namespace kickcat
         void updateOutput();
 
         StatusCode configureMapping(CoE::Dictionary& dict);
+
+        // Meaningful only after configure().
+        bool hasInput()  const { return sm_input_.type  != SyncManager::Unused; }
+        bool hasOutput() const { return sm_output_.type != SyncManager::Unused; }
 
     private:
 

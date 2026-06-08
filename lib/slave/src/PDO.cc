@@ -9,32 +9,34 @@ namespace kickcat
 {
     int32_t PDO::configure()
     {
+        // A slave may have only inputs (e.g. a digital input terminal) or only
+        // outputs. findSm throws when a direction's SM is absent, so resolve each
+        // direction independently and leave the missing one Unused.
+        sm_input_  = SyncManagerConfig{0, 0, 0, 0, SyncManager::Unused};
+        sm_output_ = SyncManagerConfig{0, 0, 0, 0, SyncManager::Unused};
+
         try
         {
-            auto [indexIn, pdoIn]   = esc_->findSm(SM_CONTROL_MODE_BUFFERED | SM_CONTROL_DIRECTION_READ);
-            auto [indexOut, pdoOut] = esc_->findSm(SM_CONTROL_MODE_BUFFERED | SM_CONTROL_DIRECTION_WRITE);
-            
+            auto [indexIn, pdoIn] = esc_->findSm(SM_CONTROL_MODE_BUFFERED | SM_CONTROL_DIRECTION_READ);
             if (pdoIn.length > 0)
             {
                 sm_input_ = SYNC_MANAGER_PI_IN(indexIn, pdoIn.start_address, pdoIn.length);
             }
-            else
-            {
-                sm_input_ = SyncManagerConfig{indexIn, 0, 0, 0, SyncManager::Unused};
-            }
+        }
+        catch (std::exception const&)
+        {
+        }
 
-            if(pdoOut.length > 0)
+        try
+        {
+            auto [indexOut, pdoOut] = esc_->findSm(SM_CONTROL_MODE_BUFFERED | SM_CONTROL_DIRECTION_WRITE);
+            if (pdoOut.length > 0)
             {
                 sm_output_ = SYNC_MANAGER_PI_OUT(indexOut, pdoOut.start_address, pdoOut.length);
             }
-            else
-            {
-                sm_output_ = SyncManagerConfig{indexOut, 0, 0, 0, SyncManager::Unused};
-            }
         }
-        catch (std::exception const& e)
+        catch (std::exception const&)
         {
-            return -EINVAL;
         }
 
         return 0;
@@ -51,7 +53,7 @@ namespace kickcat
             return StatusCode::INVALID_OUTPUT_CONFIGURATION;
         }
 
-        return StatusCode::NO_ERROR;
+        return StatusCode::ECAT_NO_ERROR;
     }
 
     void PDO::activateOutput(bool is_activated)
@@ -173,9 +175,9 @@ namespace kickcat
                 return false;
             }
 
-            if (index == 0x0000 && sub == 0)
+            // ETG.1000.6 Tables 74/75: index 0 is a gap (no mapped object).
+            if (index == 0)
             {
-                // this is padding entry, just skip it, it is used to align the next entries on byte boundary
                 bit_offset += bits;
                 continue;
             }
@@ -206,15 +208,9 @@ namespace kickcat
             od_entry->data = new_ptr;
             od_entry->is_mapped = true; // data has been remapped/aliased
 
-            std::cout << "[PDO DEBUG] mapped target OD entry: 0x"
-                        << std::hex << index
-                        << ":" << std::dec << int(sub)
-                        << " is_mapped=" << od_entry->is_mapped
-                        << std::endl;
-
             if (old_data)
             {
-                std::memcpy(new_ptr, old_data, bits / 8);
+                std::memcpy(new_ptr, old_data, (bits + 7) / 8);  // sub-byte entries occupy 1 byte
 
                 if (not old_is_mapped) // if the old data was not mapped, we allocated it, so free it
                 {
@@ -267,6 +263,6 @@ namespace kickcat
             }
         }
 
-        return StatusCode::NO_ERROR;
+        return StatusCode::ECAT_NO_ERROR;
     }
 }

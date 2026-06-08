@@ -13,9 +13,8 @@
 
 namespace kickcat::ESI
 {
-    // Renamed from SyncManager to avoid shadowing kickcat::SyncManager (the
-    // sub-namespace holding the runtime register layout + Type enum). Carries
-    // the ESI <Sm> element's parsed attributes — semantically "SM info from ESI".
+    // Distinct from kickcat::SyncManager (the runtime register-layout namespace,
+    // which it would otherwise shadow): the parsed attributes of an ESI <Sm>.
     struct SmInfo
     {
         SyncManager::Type type = SyncManager::Unused;
@@ -184,6 +183,7 @@ namespace kickcat::ESI
         std::optional<int32_t> os_min;
         std::optional<int32_t> os_max;
         std::optional<int32_t> os_index_inc;
+        std::optional<int32_t> pdo_order;
         bool                  overwritten_by_module = false;
         bool                  sra_parameter         = false;
         std::string           safety_pdo_type;
@@ -211,7 +211,7 @@ namespace kickcat::ESI
 
         std::vector<uint8_t>     raw_data;        // <Data> at Eeprom level (raw image)
         std::optional<int32_t>   byte_size;
-        std::vector<uint8_t>     config_data;     // first 16 SII bytes
+        std::vector<uint8_t>     config_data;     // SII config area (words 0..6; CRC word excluded)
         std::vector<uint8_t>     config_data2;
         std::vector<uint8_t>     bootstrap;       // bootstrap mailbox config
         std::vector<Category>    categories;
@@ -236,6 +236,20 @@ namespace kickcat::ESI
             std::optional<int32_t> input_delay_time;
         };
 
+        // <OpMode>/<Sm No="..">. The SyncType/CycleTime/ShiftTime children are
+        // obsolete in the ESI XSD and have no fields here.
+        struct SmConfig
+        {
+            struct PdoRef
+            {
+                uint16_t               index = 0;
+                std::optional<int32_t> os_fac;   // <Pdo>/@OSFac: oversampling factor
+            };
+
+            int32_t             no = 0;   // required @No: target SyncManager index
+            std::vector<PdoRef> pdos;
+        };
+
         std::string             name;
         std::string             desc;
         uint32_t                assign_activate = 0;
@@ -243,6 +257,7 @@ namespace kickcat::ESI
 
         std::array<std::optional<SyncTime>,  4> cycle_time;   // CycleTimeSync0..3
         std::array<std::optional<ShiftTime>, 4> shift_time;   // ShiftTimeSync0..3
+        std::vector<SmConfig>                   sm_configs;
     };
 
     struct Dc

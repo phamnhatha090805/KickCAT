@@ -307,4 +307,88 @@ namespace kickcat::CoE
 
         return {&(*object_it), &(*entry_it)};
     }
+
+
+    std::vector<std::string> validateDictionary(Dictionary const& dict)
+    {
+        std::vector<std::string> problems;
+
+        auto where = [](uint16_t index, int subindex)
+        {
+            std::stringstream ss;
+            ss << "0x" << std::hex << index << std::dec << "." << subindex;
+            return ss.str();
+        };
+
+        for (auto const& object : dict)
+        {
+            bool const is_complex = (object.code == ObjectCode::ARRAY) or (object.code == ObjectCode::RECORD);
+            if (is_complex)
+            {
+                if (object.entries.empty())
+                {
+                    problems.push_back("Object " + where(object.index, 0) + " (" + toString(object.code)
+                        + ") has no entries: complete access dereferences subindex 0");
+                }
+                else if (object.entries.front().data == nullptr)
+                {
+                    problems.push_back("Object " + where(object.index, 0)
+                        + ": subindex 0 (entry count) has null data: complete access dereferences null");
+                }
+            }
+
+            for (auto const& entry : object.entries)
+            {
+                bool const readable = (entry.access & Access::READ) != 0;
+                bool const writable = (entry.access & Access::WRITE) != 0;
+                if ((readable or writable) and (entry.bitlen != 0) and (entry.data == nullptr))
+                {
+                    char const* how = "writable";
+                    if (readable)
+                    {
+                        how = "readable";
+                    }
+                    problems.push_back("Entry " + where(object.index, entry.subindex) + " is " + how
+                        + " (" + Access::toString(entry.access) + ") but has null data: an SDO access dereferences null");
+                }
+            }
+        }
+
+        return problems;
+    }
+
+    void materializeStorage(Dictionary& dict)
+    {
+        auto ensure = [](Entry& entry)
+        {
+            if ((entry.data != nullptr) or (entry.bitlen == 0))
+            {
+                return;
+            }
+            std::size_t size = (entry.bitlen + 7) / 8;
+            if (size == 0)
+            {
+                size = 1;
+            }
+            entry.data = std::calloc(1, size);
+        };
+
+        for (auto& object : dict)
+        {
+            bool const is_complex = (object.code == ObjectCode::ARRAY) or (object.code == ObjectCode::RECORD);
+            // Complete access dereferences subindex 0 regardless of its access bits.
+            if (is_complex and not object.entries.empty())
+            {
+                ensure(object.entries.front());
+            }
+
+            for (auto& entry : object.entries)
+            {
+                if ((entry.access & (Access::READ | Access::WRITE)) != 0)
+                {
+                    ensure(entry);
+                }
+            }
+        }
+    }
 }
