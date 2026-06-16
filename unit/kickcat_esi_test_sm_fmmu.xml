@@ -46,7 +46,7 @@
 				<Sm MinSize="40" MaxSize="1486" DefaultSize="128" StartAddress="#x1400" ControlByte="#x22" Enable="1" Virtual="1">MBoxIn</Sm>
 				<Sm DefaultSize="40" StartAddress="#x1800" ControlByte="#x64" Enable="1" OpOnly="true">Outputs</Sm>
 				<Sm DefaultSize="22" StartAddress="#x1c00" ControlByte="#x20" Enable="1">Inputs</Sm>
-				<RxPdo Sm="2" Mandatory="1" Fixed="1">
+				<RxPdo Sm="2" Mandatory="1" Fixed="1" PdoOrder="5">
 					<Index>#x1600</Index>
 					<Name>Outputs</Name>
 					<Exclude>#x1601</Exclude>
@@ -124,6 +124,10 @@
 						<AssignActivate>#x300</AssignActivate>
 						<CycleTimeSync0 Factor="1">1000000</CycleTimeSync0>
 						<ShiftTimeSync0 Input="true" OutputDelayTime="500">100</ShiftTimeSync0>
+						<Sm No="3">
+							<SyncType>0</SyncType>
+							<Pdo OSFac="2">#x1A00</Pdo>
+						</Sm>
 					</OpMode>
 					<OpMode>
 						<Name>FreeRun</Name>

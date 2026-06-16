@@ -1,23 +1,36 @@
 #include "SIIParser.h"
 #include "debug.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace kickcat::eeprom
 {
-    void parseStrings(SII& sii, uint8_t const* section_start)
+    void parseStrings(SII& sii, uint8_t const* section_start, uint16_t section_size)
     {
         sii.strings.push_back(std::string());  // index 0 is an empty string
-        uint8_t const* pos = section_start;
+        uint8_t const* pos       = section_start;
+        uint8_t const* const end = section_start + section_size;
 
+        if (pos >= end)
+        {
+            return;
+        }
         uint8_t number_of_strings = *pos;
         pos += 1;
 
         for (int32_t i = 0; i < number_of_strings; ++i)
         {
+            if (pos >= end)
+            {
+                break;
+            }
             uint8_t len = *pos;
             pos += 1;
-
+            if (len > (end - pos))
+            {
+                break;
+            }
             sii.strings.emplace_back(reinterpret_cast<char const*>(pos), len);
             pos += len;
         }
@@ -36,7 +49,7 @@ namespace kickcat::eeprom
         uint8_t const* pos = section_start;
         uint8_t const* end = section_start + section_size;
 
-        while (pos < end)
+        while ((end - pos) >= static_cast<std::ptrdiff_t>(sizeof(SyncManagerEntry)))
         {
             SyncManagerEntry entry;
             std::memcpy(&entry, pos, sizeof(SyncManagerEntry));
@@ -45,9 +58,16 @@ namespace kickcat::eeprom
         }
     }
 
-    void parsePDO(uint8_t const* section_start, std::vector<PDOMapping>& pdos)
+    void parsePDO(uint8_t const* section_start, uint16_t section_size, std::vector<PDOMapping>& pdos)
     {
-        uint8_t const* pos = section_start;
+        // Fixed PDO header: index(2) + nb_entries(1) + sm(1) + synchro(1) + name_idx(1) + flags(2)
+        if (section_size < 8)
+        {
+            return;
+        }
+
+        uint8_t const* pos       = section_start;
+        uint8_t const* const end = section_start + section_size;
 
         PDOMapping mapping{};
         std::memcpy(&mapping.index, pos, sizeof(uint16_t));
@@ -70,6 +90,10 @@ namespace kickcat::eeprom
 
         for (int32_t i = 0; i < number_of_entries; ++i)
         {
+            if ((end - pos) < static_cast<std::ptrdiff_t>(sizeof(PDOEntry)))
+            {
+                break;
+            }
             PDOEntry entry;
             std::memcpy(&entry, pos, sizeof(PDOEntry));
             mapping.entries.push_back(entry);
@@ -117,13 +141,18 @@ namespace kickcat::eeprom
             std::memcpy(&category_words, pos + 2, sizeof(uint16_t));
             uint16_t category_size       = category_words * sizeof(uint16_t);
             uint8_t const* category_data = pos + 4;
+            if (category_size > (data + size) - category_data)
+            {
+                // category claims more bytes than remain in the buffer: stop parsing
+                break;
+            }
             pos += (4 + category_size);
 
             switch (category_type)
             {
                 case Category::Strings:
                 {
-                    parseStrings(*this, category_data);
+                    parseStrings(*this, category_data, category_size);
                     break;
                 }
                 case Category::DataTypes:
@@ -148,12 +177,12 @@ namespace kickcat::eeprom
                 }
                 case Category::TxPDO:
                 {
-                    parsePDO(category_data, TxPDO);
+                    parsePDO(category_data, category_size, TxPDO);
                     break;
                 }
                 case Category::RxPDO:
                 {
-                    parsePDO(category_data, RxPDO);
+                    parsePDO(category_data, category_size, RxPDO);
                     break;
                 }
                 case Category::DC:
@@ -308,6 +337,31 @@ namespace kickcat::eeprom
         return out;
     }
 
+
+    uint8_t SII::registerString(std::string const& text)
+    {
+        if (strings.empty())
+        {
+            strings.emplace_back();   // reserved index 0 (empty string)
+        }
+        if (text.empty())
+        {
+            return 0;
+        }
+        for (std::size_t i = 1; i < strings.size(); ++i)
+        {
+            if (strings[i] == text)
+            {
+                return static_cast<uint8_t>(i);
+            }
+        }
+        if (strings.size() > 0xFF)
+        {
+            return 0;
+        }
+        strings.push_back(text);
+        return static_cast<uint8_t>(strings.size() - 1);
+    }
 
     uint16_t computeInfoCRC(InfoEntry const& info)
     {

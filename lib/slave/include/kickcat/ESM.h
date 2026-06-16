@@ -1,5 +1,5 @@
-#ifndef SLAVE_STACK_INCLUDE_ESM_H_
-#define SLAVE_STACK_INCLUDE_ESM_H_
+#ifndef KICKCAT_SLAVE_ESM_H_
+#define KICKCAT_SLAVE_ESM_H_
 
 #include "PDO.h"
 #include "kickcat/AbstractESC.h"
@@ -41,9 +41,9 @@ namespace kickcat
                 return not(al_watchdog_process_data & 0x1);
             }
 
-            static Context build(uint8_t state, uint8_t statusCode = StatusCode::NO_ERROR)
+            static Context build(uint8_t state, uint8_t statusCode = StatusCode::ECAT_NO_ERROR)
             {
-                if (statusCode == NO_ERROR)
+                if (statusCode == StatusCode::ECAT_NO_ERROR)
                 {
                     return Context{state, statusCode, 0};
                 }
